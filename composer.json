@@ -1,45 +1,54 @@
 {
-  "name": ":vendor_slug/:package_slug",
-  "description": ":package_description",
+  "name": "spiral/mcp-server",
+  "description": "Spiral bridge for MCP server",
   "keywords": [
-    ":vendor_name",
     "spiral",
-    ":package_slug"
+    "spiral",
+    "mcp-server"
   ],
-  "homepage": "https://github.com/:vendor_slug/:package_slug",
+  "homepage": "https://github.com/spiral/mcp-server",
   "license": "MIT",
   "authors": [
     {
-      "name": ":author_name",
-      "email": "author@domain.com",
+      "name": "Pavel Buchnev",
+      "email": "butschster@gmail.com",
       "role": "Developer"
     }
   ],
   "require": {
-    "php": "^8.1",
-    "spiral/boot": "^3.7",
-    "spiral/console": "^3.7"
+    "php": "^8.3",
+    "llm-agents/json-schema-mapper": "^1.0",
+    "php-mcp/server": "dev-main",
+    "spiral/boot": "^3.15",
+    "spiral/tokenizer": "^3.15",
+    "spiral/attributes": "^3.0"
   },
   "require-dev": {
-    "mockery/mockery": "^1.5",
     "phpunit/phpunit": "^10.1",
-    "spiral/testing": "^2.0",
-    "vimeo/psalm": "^5.9"
+    "rector/rector": "^2.0",
+    "spiral/code-style": "^2.2",
+    "spiral/testing": "^2.3",
+    "vimeo/psalm": "^6.10"
   },
   "autoload": {
     "psr-4": {
-      "VendorName\\Skeleton\\": "src"
+      "Spiral\\McpServer\\": "src"
     }
   },
   "autoload-dev": {
     "psr-4": {
-      "VendorName\\Skeleton\\Tests\\App\\": "tests/app",
-      "VendorName\\Skeleton\\Tests\\": "tests/src"
+      "Spiral\\McpServer\\Tests\\App\\": "tests/app",
+      "Spiral\\McpServer\\Tests\\": "tests/src"
     }
   },
   "scripts": {
-    "test": "vendor/bin/phpunit",
-    "psalm": "vendor/bin/psalm --config=psalm.xml ./src"
+    "cs:fix": "php-cs-fixer fix -v",
+    "psalm": "psalm",
+    "psalm:baseline": "psalm --set-baseline=psalm-baseline.xml",
+    "refactor": "rector process --config=rector.php",
+    "refactor:ci": "rector process --config=rector.php --dry-run --ansi",
+    "test": "phpunit",
+    "test-coverage": "phpunit --coverage"
   },
   "config": {
     "sort-packages": true
@@ -47,7 +56,7 @@
   "extra": {
     "spiral": {
       "bootloaders": [
-        "VendorName\\Skeleton\\Bootloader\\SkeletonBootloader"
+        "Spiral\\McpServer\\Bootloader\\McpServerBootloader"
       ]
     }
   },
