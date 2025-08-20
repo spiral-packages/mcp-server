@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Spiral\McpServer;
+namespace Spiral\McpServer\Entrypoint;
 
 use PhpMcp\Server\Contracts\ServerTransportInterface;
 use PhpMcp\Server\Server;

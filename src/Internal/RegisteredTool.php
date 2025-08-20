@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Spiral\McpServer;
+namespace Spiral\McpServer\Internal;
 
 use PhpMcp\Server\Context;
 use Psr\Container\ContainerInterface;

@@ -112,6 +112,8 @@ final readonly class CalculatorRequest
 }
 ```
 
+> **Note**: For more information about DTO schema definition visit [spiral/json-schema-generator](https://github.com/spiral/json-schema-generator).
+
 ### 3. Set Environment Variables
 
 ```bash
@@ -125,8 +127,18 @@ MCP_SERVER_VERSION="1.0.0"
 
 ### 4. Start the Server
 
+You can start the server in two ways:
+
+**Option 1: Using the MCP Dispatcher (Recommended for production)**
+
 ```bash
 SAPI=mcp php app.php
+```
+
+**Option 2: Using the Console Command**
+
+```bash
+php app.php mcp
 ```
 
 Your MCP server is now running and ready to accept requests!
@@ -226,6 +238,8 @@ final readonly class FileRequest
 }
 ```
 
+> **Note**: For more information about DTO schema definition visit [spiral/json-schema-generator](https://github.com/spiral/json-schema-generator).
+
 ### Tools Without Parameters
 
 For tools that don't require input parameters:
@@ -251,240 +265,6 @@ class SystemStatusTool
         // Implementation details...
         return 0;
     }
-}
-```
-
-### Complex Request Objects
-
-Use complex objects with Field attributes for rich schema generation:
-
-```php
-use Spiral\JsonSchemaGenerator\Attribute\Field;
-use Spiral\JsonSchemaGenerator\Schema\Format;
-
-final readonly class DatabaseQueryRequest
-{
-    public function __construct(
-        #[Field(
-            title: 'Table Name',
-            description: 'Name of the database table to query'
-        )]
-        public string $table,
-        
-        #[Field(
-            title: 'Conditions',
-            description: 'WHERE conditions as key-value pairs',
-            default: []
-        )]
-        public array $conditions = [],
-        
-        #[Field(
-            title: 'Limit',
-            description: 'Maximum number of records to return'
-        )]
-        public ?int $limit = null,
-        
-        #[Field(
-            title: 'Order By',
-            description: 'Order by fields with direction (ASC/DESC)',
-            default: []
-        )]
-        public array $orderBy = [],
-    ) {}
-}
-
-#[Tool(
-    name: 'db_query',
-    description: 'Executes a database query with conditions'
-)]
-class DatabaseQueryTool
-{
-    public function __construct(
-        private readonly DatabaseInterface $db,
-    ) {}
-
-    public function __invoke(DatabaseQueryRequest $request): array
-    {
-        return $this->db->query($request->table)
-            ->where($request->conditions)
-            ->limit($request->limit)
-            ->orderBy($request->orderBy)
-            ->fetchAll();
-    }
-}
-```
-
-### Using Format Validation
-
-Leverage built-in format validation for common data types:
-
-```php
-final readonly class UserRegistrationRequest
-{
-    public function __construct(
-        #[Field(
-            title: 'Username',
-            description: 'Unique username for the account'
-        )]
-        public string $username,
-        
-        #[Field(
-            title: 'Email Address',
-            description: 'Valid email address for account verification',
-            format: Format::Email
-        )]
-        public string $email,
-        
-        #[Field(
-            title: 'Date of Birth',
-            description: 'User birth date in ISO format',
-            format: Format::Date
-        )]
-        public string $birthDate,
-        
-        #[Field(
-            title: 'Website',
-            description: 'Optional personal website URL',
-            format: Format::Uri
-        )]
-        public ?string $website = null,
-        
-        #[Field(
-            title: 'User ID',
-            description: 'Auto-generated UUID for the user',
-            format: Format::Uuid
-        )]
-        public string $userId,
-    ) {}
-}
-```
-
-### Enum Support with Schema Generation
-
-The schema generator automatically handles PHP enums:
-
-```php
-enum UserRole: string
-{
-    case Admin = 'admin';
-    case User = 'user';
-    case Moderator = 'moderator';
-}
-
-enum Priority: int
-{
-    case Low = 1;
-    case Medium = 2;
-    case High = 3;
-    case Critical = 4;
-}
-
-final readonly class TaskRequest
-{
-    public function __construct(
-        #[Field(
-            title: 'Task Title',
-            description: 'Descriptive title for the task'
-        )]
-        public string $title,
-        
-        #[Field(
-            title: 'Assigned Role',
-            description: 'User role that can handle this task'
-        )]
-        public UserRole $assignedRole,
-        
-        #[Field(
-            title: 'Priority Level',
-            description: 'Task priority from 1 (low) to 4 (critical)'
-        )]
-        public Priority $priority,
-        
-        #[Field(
-            title: 'Tags',
-            description: 'List of tags for task categorization',
-            default: []
-        )]
-        public array $tags = [],
-    ) {}
-}
-```
-
-### Complex Nested Objects
-
-Handle nested objects and arrays with proper schema references:
-
-```php
-final readonly class Address
-{
-    public function __construct(
-        #[Field(title: 'Street', description: 'Street address')]
-        public string $street,
-        
-        #[Field(title: 'City', description: 'City name')]
-        public string $city,
-        
-        #[Field(title: 'ZIP Code', description: 'Postal code')]
-        public string $zipCode,
-        
-        #[Field(title: 'Country', description: 'Country name')]
-        public string $country,
-    ) {}
-}
-
-final readonly class ContactInfo
-{
-    public function __construct(
-        #[Field(
-            title: 'Email',
-            description: 'Primary email address',
-            format: Format::Email
-        )]
-        public string $email,
-        
-        #[Field(title: 'Phone', description: 'Phone number')]
-        public ?string $phone = null,
-    ) {}
-}
-
-final readonly class CreateUserRequest
-{
-    public function __construct(
-        #[Field(
-            title: 'Full Name',
-            description: 'User full name'
-        )]
-        public string $name,
-        
-        #[Field(
-            title: 'Home Address',
-            description: 'User residential address'
-        )]
-        public Address $address,
-        
-        #[Field(
-            title: 'Contact Information',
-            description: 'Contact details for the user'
-        )]
-        public ContactInfo $contact,
-        
-        /**
-        * @var array<Address>
-         */
-        #[Field(
-            title: 'Additional Addresses',
-            description: 'Optional additional addresses (work, etc.)',
-            default: []
-        )]
-        public array $additionalAddresses = [], // array of Address objects
-        
-        #[Field(
-            title: 'User Preferences',
-            description: 'Key-value pairs of user preferences',
-            default: []
-        )]
-        public array $preferences = [],
-    ) {}
 }
 ```
 

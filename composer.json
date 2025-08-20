@@ -17,7 +17,8 @@
   ],
   "require": {
     "php": "^8.3",
-    "llm-agents/json-schema-mapper": "^1.0",
+    "cuyz/valinor": "^1.7",
+    "spiral/json-schema-generator": "^2.0",
     "php-mcp/server": "dev-main",
     "spiral/boot": "^3.15",
     "spiral/tokenizer": "^3.15",

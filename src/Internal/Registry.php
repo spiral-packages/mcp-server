@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Spiral\McpServer;
+namespace Spiral\McpServer\Internal;
 
 use PhpMcp\Schema\Tool;
 
@@ -28,6 +28,6 @@ final class Registry extends \PhpMcp\Server\Registry
 
     public function getTools(): array
     {
-        return \array_map(fn($tool) => $tool->schema, $this->tools);
+        return \array_map(static fn($tool) => $tool->schema, $this->tools);
     }
 }

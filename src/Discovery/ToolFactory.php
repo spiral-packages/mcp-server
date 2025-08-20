@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace Spiral\McpServer\Discovery;
 
 use Spiral\McpServer\Attribute;
-use LLM\Agents\Tool\SchemaMapperInterface;
 use PhpMcp\Schema\Tool;
 use PhpMcp\Schema\ToolAnnotations;
 use Spiral\Core\FactoryInterface;
 use Spiral\Exceptions\ExceptionReporterInterface;
+use Spiral\McpServer\SchemaMapperInterface;
 
 /**
  * @internal
