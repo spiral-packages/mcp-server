@@ -112,7 +112,8 @@ final readonly class CalculatorRequest
 }
 ```
 
-> **Note**: For more information about DTO schema definition visit [spiral/json-schema-generator](https://github.com/spiral/json-schema-generator).
+> **Note**: For more information about DTO schema definition
+> visit [spiral/json-schema-generator](https://github.com/spiral/json-schema-generator).
 
 ### 3. Set Environment Variables
 
@@ -180,14 +181,15 @@ $this->container->bindSingleton(Configuration::class, function() {
 
 ### Basic Tool Structure
 
-Tools are simple PHP classes that implement the `__invoke()` method:
+Tools are simple PHP classes that implement the `__invoke()` method. They support Dependency Injection (DI) and can be
+injected with any dependencies, like in the following example:
 
 ```php
 <?php
 
 namespace App\Tool;
 
-use Spiral\McpServer\Attribute\Tool;
+use Spiral\Files\FilesInterface;use Spiral\McpServer\Attribute\Tool;
 use Spiral\McpServer\Attribute\IsReadonly;
 use Spiral\JsonSchemaGenerator\Attribute\Field;
 
@@ -196,18 +198,21 @@ use Spiral\JsonSchemaGenerator\Attribute\Field;
     description: 'Reads content from a file with validation'
 )]
 #[IsReadonly]
-class FileReaderTool
+final readonly class FileReaderTool
 {
+    public function __construct(
+        private FilesInterface $files,
+    ) {}
+    
     public function __invoke(FileRequest $request): array
     {
-        if (!file_exists($request->path)) {
+        if (!$this->files->exists($request->path)) {
             throw new \InvalidArgumentException('File not found');
         }
 
         return [
-            'content' => file_get_contents($request->path),
-            'size' => filesize($request->path),
-            'mime_type' => mime_content_type($request->path),
+            'content' => $this->files->read($request->path),
+            'size' => $this->files->size($request->path),
         ];
     }
 }
@@ -215,6 +220,9 @@ class FileReaderTool
 final readonly class FileRequest
 {
     public function __construct(
+        /**
+         * @param not-empty-string $path
+         */
         #[Field(
             title: 'File Path',
             description: 'Absolute path to the file to read'
@@ -228,6 +236,9 @@ final readonly class FileRequest
         )]
         public string $encoding = 'utf-8',
         
+        /**
+         * @param positive-int $maxSize
+         */
         #[Field(
             title: 'Maximum Size',
             description: 'Maximum file size in bytes',
@@ -238,7 +249,8 @@ final readonly class FileRequest
 }
 ```
 
-> **Note**: For more information about DTO schema definition visit [spiral/json-schema-generator](https://github.com/spiral/json-schema-generator).
+> **Note**: For more information about DTO schema definition
+> visit [spiral/json-schema-generator](https://github.com/spiral/json-schema-generator).
 
 ### Tools Without Parameters
 
