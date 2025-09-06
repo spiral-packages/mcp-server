@@ -132,7 +132,7 @@ final class McpServerBootloader extends Bootloader
     ): SessionManager {
         return new SessionManager(
             handler: $sessionHandler,
-            logger: $logs->getLogger('mcp.session'),
+            logger: $logs->getLogger('mcp'),
             loop: $loop,
             ttl: (int) $env->get('MCP_SESSION_TTL', 3600),
             gcInterval: (float) $env->get('MCP_SESSION_GC_INTERVAL', 300),
@@ -141,7 +141,7 @@ final class McpServerBootloader extends Bootloader
 
     private function createSubscriptionManager(LogsInterface $logs): SubscriptionManager
     {
-        return new SubscriptionManager($logs->getLogger('mcp.subscription'));
+        return new SubscriptionManager($logs->getLogger('mcp'));
     }
 
     private function createCache(
@@ -158,14 +158,14 @@ final class McpServerBootloader extends Bootloader
 
     private function createRegistry(LogsInterface $logs): Registry
     {
-        return new Registry($logs->getLogger('mcp.registry'));
+        return new Registry($logs->getLogger('mcp'));
     }
 
     private function createToolExecutor(
         ReferenceRegistryInterface $registry,
         LogsInterface $logs,
     ): ToolExecutorInterface {
-        return new ToolExecutor($registry, $logs->getLogger('mcp.executor'));
+        return new ToolExecutor($registry, $logs->getLogger('mcp'));
     }
 
     private function createMcpConfiguration(
@@ -213,7 +213,7 @@ final class McpServerBootloader extends Bootloader
             subscriptionManager: $subscriptionManager,
             toolExecutor: $toolExecutor,
             pagination: $pagination,
-            logger: $logs->getLogger('mcp.routes'),
+            logger: $logs->getLogger('mcp'),
         );
     }
 
@@ -222,7 +222,7 @@ final class McpServerBootloader extends Bootloader
         RoutesFactory $routesFactory,
     ): Dispatcher {
         return new Dispatcher(
-            logger: $logs->getLogger('mcp.dispatcher'),
+            logger: $logs->getLogger('mcp'),
             routesFactory: $routesFactory,
         );
     }
@@ -232,7 +232,7 @@ final class McpServerBootloader extends Bootloader
         LogsInterface $logs,
     ): Protocol {
         return $factory->make(Protocol::class, [
-            'logger' => $logs->getLogger('mcp.protocol'),
+            'logger' => $logs->getLogger('mcp'),
         ]);
     }
 
@@ -253,7 +253,7 @@ final class McpServerBootloader extends Bootloader
             mcpPath: $mcpPath,
             sslContext: $env->get('MCP_SSL_CONTEXT'),
             middleware: $middleware->all(),
-            logger: $logs->getLogger('mcp.http'),
+            logger: $logs->getLogger('mcp'),
             runLoop: true,
         );
     }
@@ -281,7 +281,7 @@ final class McpServerBootloader extends Bootloader
             ),
             'stdio' => new StdioServerTransport(
                 loop: $loop,
-                logger: $logs->getLogger('mcp.transport.stdio'),
+                logger: $logs->getLogger('mcp'),
             ),
             default => throw new \InvalidArgumentException("Unknown transport type: {$transportType}")
         };
@@ -295,7 +295,7 @@ final class McpServerBootloader extends Bootloader
         return new HttpServerTransport(
             httpServer: $httpServer,
             sessionId: $sessionIdGenerator,
-            logger: $logs->getLogger('mcp.transport.http'),
+            logger: $logs->getLogger('mcp'),
         );
     }
 
@@ -308,7 +308,7 @@ final class McpServerBootloader extends Bootloader
         return new StreamableHttpServerTransport(
             httpServer: $httpServer,
             sessionId: $sessionIdGenerator,
-            logger: $logs->getLogger('mcp.transport.streamable'),
+            logger: $logs->getLogger('mcp'),
             enableJsonResponse: (bool) $env->get('MCP_ENABLE_JSON_RESPONSE', true),
             stateless: (bool) $env->get('MCP_STATELESS', false),
         );
@@ -322,7 +322,7 @@ final class McpServerBootloader extends Bootloader
         return new Server(
             protocol: $protocol,
             sessionManager: $sessionManager,
-            logger: $logs->getLogger('mcp.server'),
+            logger: $logs->getLogger('mcp'),
         );
     }
 
