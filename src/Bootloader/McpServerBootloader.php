@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace Spiral\McpServer\Bootloader;
 
 use Mcp\Server\Configuration;
-use Mcp\Server\Contracts\EventStoreInterface;
+use Mcp\Server\Contracts\DispatcherInterface;
+use Mcp\Server\Contracts\DispatcherRoutesFactoryInterface;
+use Mcp\Server\Contracts\HttpServerInterface;
+use Mcp\Server\Contracts\ReferenceProviderInterface;
 use Mcp\Server\Contracts\ReferenceRegistryInterface;
 use Mcp\Server\Contracts\ServerTransportInterface;
 use Mcp\Server\Contracts\SessionHandlerInterface;
@@ -78,6 +81,7 @@ final class McpServerBootloader extends Bootloader
             CacheInterface::class => $this->createCache(...),
 
             // Registry and Tools
+            ReferenceProviderInterface::class => Registry::class,
             ReferenceRegistryInterface::class => Registry::class,
             Registry::class => $this->createRegistry(...),
             ToolExecutorInterface::class => $this->createToolExecutor(...),
@@ -89,16 +93,20 @@ final class McpServerBootloader extends Bootloader
             Paginator::class => $this->createPaginator(...),
 
             // Routing and Dispatch
+            DispatcherRoutesFactoryInterface::class => RoutesFactory::class,
             RoutesFactory::class => $this->createRoutesFactory(...),
+            DispatcherInterface::class => Dispatcher::class,
             Dispatcher::class => $this->createDispatcher(...),
 
             // Protocol
             Protocol::class => $this->createProtocol(...),
 
             // Transport
+            HttpServerInterface::class => $this->createHttpServer(...),
             ServerTransportInterface::class => $this->createTransport(...),
 
             // Main Server
+
             Server::class => $this->createServer(...),
         ];
     }
@@ -228,56 +236,17 @@ final class McpServerBootloader extends Bootloader
         ]);
     }
 
-    private function createTransport(
+    private function createHttpServer(
         EnvironmentInterface $env,
         LoopInterface $loop,
-        SessionIdGeneratorInterface $sessionIdGenerator,
-        EventStoreInterface $eventStore,
         MiddlewareRepositoryInterface $middleware,
         LogsInterface $logs,
-    ): ServerTransportInterface {
-        $transportType = $env->get('MCP_TRANSPORT', 'http');
+    ): HttpServerInterface {
         $host = $env->get('MCP_HOST', '127.0.0.1');
         $port = (int) $env->get('MCP_PORT', 8090);
         $mcpPath = $env->get('MCP_PATH', '/mcp');
 
-        return match ($transportType) {
-            'http' => $this->createHttpTransport(
-                $env,
-                $loop,
-                $sessionIdGenerator,
-                $middleware,
-                $logs,
-                $host,
-                $port,
-                $mcpPath,
-            ),
-            'streamable' => $this->createStreamableHttpTransport(
-                $env,
-                $loop,
-                $sessionIdGenerator,
-                $eventStore,
-                $logs,
-                $host,
-                $port,
-                $mcpPath,
-            ),
-            'stdio' => $this->createStdioTransport($loop, $logs),
-            default => throw new \InvalidArgumentException("Unknown transport type: {$transportType}")
-        };
-    }
-
-    private function createHttpTransport(
-        EnvironmentInterface $env,
-        LoopInterface $loop,
-        SessionIdGeneratorInterface $sessionIdGenerator,
-        MiddlewareRepositoryInterface $middleware,
-        LogsInterface $logs,
-        string $host,
-        int $port,
-        string $mcpPath,
-    ): HttpServerTransport {
-        $httpServer = new HttpServer(
+        return new HttpServer(
             loop: $loop,
             host: $host,
             port: $port,
@@ -285,9 +254,44 @@ final class McpServerBootloader extends Bootloader
             sslContext: $env->get('MCP_SSL_CONTEXT'),
             middleware: $middleware->all(),
             logger: $logs->getLogger('mcp.http'),
-            runLoop: false, // Let Spiral manage the loop
+            runLoop: true,
         );
+    }
 
+    private function createTransport(
+        HttpServerInterface $httpServer,
+        EnvironmentInterface $env,
+        LoopInterface $loop,
+        SessionIdGeneratorInterface $sessionIdGenerator,
+        LogsInterface $logs,
+    ): ServerTransportInterface {
+        $transportType = $env->get('MCP_TRANSPORT', 'http');
+
+        return match ($transportType) {
+            'http' => $this->createHttpTransport(
+                httpServer: $httpServer,
+                sessionIdGenerator: $sessionIdGenerator,
+                logs: $logs,
+            ),
+            'streamable' => $this->createStreamableHttpTransport(
+                httpServer: $httpServer,
+                env: $env,
+                sessionIdGenerator: $sessionIdGenerator,
+                logs: $logs,
+            ),
+            'stdio' => new StdioServerTransport(
+                loop: $loop,
+                logger: $logs->getLogger('mcp.transport.stdio'),
+            ),
+            default => throw new \InvalidArgumentException("Unknown transport type: {$transportType}")
+        };
+    }
+
+    private function createHttpTransport(
+        HttpServerInterface $httpServer,
+        SessionIdGeneratorInterface $sessionIdGenerator,
+        LogsInterface $logs,
+    ): HttpServerTransport {
         return new HttpServerTransport(
             httpServer: $httpServer,
             sessionId: $sessionIdGenerator,
@@ -296,41 +300,18 @@ final class McpServerBootloader extends Bootloader
     }
 
     private function createStreamableHttpTransport(
+        HttpServerInterface $httpServer,
         EnvironmentInterface $env,
-        LoopInterface $loop,
         SessionIdGeneratorInterface $sessionIdGenerator,
-        EventStoreInterface $eventStore,
         LogsInterface $logs,
-        string $host,
-        int $port,
-        string $mcpPath,
     ): StreamableHttpServerTransport {
-        $httpServer = new HttpServer(
-            loop: $loop,
-            host: $host,
-            port: $port,
-            mcpPath: $mcpPath,
-            logger: $logs->getLogger('mcp.http'),
-            runLoop: false,
-        );
-
         return new StreamableHttpServerTransport(
             httpServer: $httpServer,
             sessionId: $sessionIdGenerator,
             logger: $logs->getLogger('mcp.transport.streamable'),
             enableJsonResponse: (bool) $env->get('MCP_ENABLE_JSON_RESPONSE', true),
             stateless: (bool) $env->get('MCP_STATELESS', false),
-            eventStore: $eventStore,
         );
-    }
-
-    private function createStdioTransport(LoopInterface $loop, LogsInterface $logs): StdioServerTransport
-    {
-        $transport = new StdioServerTransport();
-        $transport->setLoop($loop);
-        $transport->setLogger($logs->getLogger('mcp.transport.stdio'));
-
-        return $transport;
     }
 
     private function createServer(

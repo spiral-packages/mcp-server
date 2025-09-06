@@ -4,13 +4,12 @@ declare(strict_types=1);
 
 namespace Spiral\McpServer;
 
-/**
- * @psalm-import-type TCallable from MiddlewareManager
- */
+use Psr\Http\Server\MiddlewareInterface;
+
 interface MiddlewareRepositoryInterface
 {
     /**
-     * @return TCallable[]
+     * @return MiddlewareInterface[]
      */
     public function all(): array;
 }
