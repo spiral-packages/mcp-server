@@ -21,7 +21,6 @@
     "spiral/json-schema-generator": "^2.0",
     "llm/mcp-server": "dev-main",
     "spiral/boot": "^3.15",
-    "spiral/core": "^3.15",
     "spiral/tokenizer": "^3.15",
     "spiral/attributes": "^3.0"
   },
