@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Spiral\McpServer\Entrypoint;
 
-use PhpMcp\Server\Contracts\ServerTransportInterface;
-use PhpMcp\Server\Server;
+use Mcp\Server\Contracts\ServerTransportInterface;
+use Mcp\Server\Server;
 use Spiral\Console\Attribute\AsCommand;
 use Spiral\Console\Command;
 use Spiral\Exceptions\ExceptionHandlerInterface;

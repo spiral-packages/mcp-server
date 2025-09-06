@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Spiral\McpServer\Discovery;
 
+use Mcp\Server\Contracts\HandlerInterface;
 use Spiral\McpServer\Attribute;
 use PhpMcp\Schema\Tool;
 use PhpMcp\Schema\ToolAnnotations;
 use Spiral\Core\FactoryInterface;
-use Spiral\Exceptions\ExceptionReporterInterface;
 use Spiral\McpServer\SchemaMapperInterface;
 
 /**
@@ -19,7 +19,6 @@ final readonly class ToolFactory
     public function __construct(
         private FactoryInterface $factory,
         private SchemaMapperInterface $schemaMapper,
-        private ExceptionReporterInterface $reporter,
     ) {}
 
     public function createTool(
@@ -39,27 +38,17 @@ final readonly class ToolFactory
         return Tool::make($name, $inputSchema, $description, $annotations);
     }
 
-    public function createHandler(\ReflectionClass $class): callable
+    public function createHandler(\ReflectionClass $class): HandlerInterface
     {
         $method = $class->getMethod('__invoke');
         [$schemaClass, $_] = $this->findSchema($method);
 
-        return function (array $arguments) use ($class, $schemaClass): array {
-            try {
-                /** @var callable $tool */
-                $tool = $this->factory->make($class->getName());
-
-                if ($schemaClass === null) {
-                    return $tool();
-                }
-
-                $object = $this->schemaMapper->toObject(\json_encode($arguments), $schemaClass);
-                return $tool($object);
-            } catch (\Throwable $e) {
-                $this->reporter->report($e);
-                throw $e;
-            }
-        };
+        return new ClassHandler(
+            factory: $this->factory,
+            schemaMapper: $this->schemaMapper,
+            class: $class,
+            schemaClass: $schemaClass,
+        );
     }
 
     private function validateToolClass(\ReflectionClass $class): void

@@ -4,9 +4,8 @@ declare(strict_types=1);
 
 namespace Spiral\McpServer\Discovery;
 
+use Mcp\Server\Contracts\ReferenceRegistryInterface;
 use Spiral\McpServer\Attribute;
-use PhpMcp\Server\Registry;
-use PhpMcp\Server\Server;
 use Spiral\Tokenizer\Attribute\TargetAttribute;
 use Spiral\Tokenizer\TokenizationListenerInterface;
 
@@ -16,15 +15,11 @@ use Spiral\Tokenizer\TokenizationListenerInterface;
 #[TargetAttribute(Attribute\Tool::class)]
 final readonly class ToolsLocator implements TokenizationListenerInterface
 {
-    private Registry $registry;
-
     public function __construct(
-        Server $server,
+        private ReferenceRegistryInterface $registry,
         private AttributesParser $attributesParser,
         private ToolFactory $toolFactory,
-    ) {
-        $this->registry = $server->getRegistry();
-    }
+    ) {}
 
     public function listen(\ReflectionClass $class): void
     {

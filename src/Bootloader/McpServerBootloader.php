@@ -4,28 +4,39 @@ declare(strict_types=1);
 
 namespace Spiral\McpServer\Bootloader;
 
+use Mcp\Server\Configuration;
+use Mcp\Server\Contracts\EventStoreInterface;
+use Mcp\Server\Contracts\ReferenceRegistryInterface;
+use Mcp\Server\Contracts\ServerTransportInterface;
+use Mcp\Server\Contracts\SessionHandlerInterface;
+use Mcp\Server\Contracts\SessionIdGeneratorInterface;
+use Mcp\Server\Contracts\ToolExecutorInterface;
+use Mcp\Server\Defaults\ArrayCache;
+use Mcp\Server\Defaults\FileCache;
+use Mcp\Server\Defaults\ToolExecutor;
+use Mcp\Server\Dispatcher;
+use Mcp\Server\Dispatcher\Paginator;
+use Mcp\Server\Dispatcher\RoutesFactory;
+use Mcp\Server\Protocol;
+use Mcp\Server\Registry;
+use Mcp\Server\Server;
+use Mcp\Server\Session\ArraySessionHandler;
+use Mcp\Server\Session\CacheSessionHandler;
+use Mcp\Server\Session\SessionIdGenerator;
+use Mcp\Server\Session\SessionManager;
+use Mcp\Server\Session\SubscriptionManager;
+use Mcp\Server\Transports\HttpServerTransport;
+use Mcp\Server\Transports\HttpServer;
+use Mcp\Server\Transports\StdioServerTransport;
+use Mcp\Server\Transports\StreamableHttpServerTransport;
 use PhpMcp\Schema\Implementation;
 use PhpMcp\Schema\ServerCapabilities;
-use PhpMcp\Server\Configuration;
-use PhpMcp\Server\Contracts\ServerTransportInterface;
-use PhpMcp\Server\Contracts\SessionHandlerInterface;
-use PhpMcp\Server\Dispatcher;
-use PhpMcp\Server\Protocol;
-use PhpMcp\Server\Server;
-use PhpMcp\Server\ServerBuilder;
-use PhpMcp\Server\Session\ArraySessionHandler;
-use PhpMcp\Server\Session\SessionManager;
-use PhpMcp\Server\Session\SubscriptionManager;
-use PhpMcp\Server\Transports\HttpServerTransport;
-use PhpMcp\Server\Transports\StdioServerTransport;
-use PhpMcp\Server\Transports\StreamableHttpServerTransport;
-use PhpMcp\Server\Utils\DocBlockParser;
-use PhpMcp\Server\Utils\SchemaGenerator;
-use Psr\Container\ContainerInterface;
+use Psr\SimpleCache\CacheInterface;
 use React\EventLoop\Loop;
 use React\EventLoop\LoopInterface;
 use Spiral\Boot\AbstractKernel;
 use Spiral\Boot\Bootloader\Bootloader;
+use Spiral\Boot\DirectoriesInterface;
 use Spiral\Boot\EnvironmentInterface;
 use Spiral\Console\Bootloader\ConsoleBootloader;
 use Spiral\Core\FactoryInterface;
@@ -33,8 +44,6 @@ use Spiral\Logger\LogsInterface;
 use Spiral\McpServer\Discovery\ToolsLocator;
 use Spiral\McpServer\Entrypoint\McpCommand;
 use Spiral\McpServer\Entrypoint\McpDispatcher;
-use Spiral\McpServer\Internal\Registry;
-use Spiral\McpServer\Internal\SchemaValidator;
 use Spiral\McpServer\MiddlewareManager;
 use Spiral\McpServer\MiddlewareRegistryInterface;
 use Spiral\McpServer\MiddlewareRepositoryInterface;
@@ -52,80 +61,288 @@ final class McpServerBootloader extends Bootloader
     public function defineSingletons(): array
     {
         return [
+            // Core Dependencies
+            LoopInterface::class => static fn(): LoopInterface => Loop::get(),
+
+            // Middleware Management
             MiddlewareRepositoryInterface::class => MiddlewareManager::class,
             MiddlewareRegistryInterface::class => MiddlewareManager::class,
 
-            LoopInterface::class => static fn(): LoopInterface => Loop::get(),
-            Configuration::class => static fn(
-                EnvironmentInterface $env,
-                LogsInterface $logs,
-                LoopInterface $loop,
-                ContainerInterface $container,
-            ): Configuration => new Configuration(
-                serverInfo: Implementation::make(
-                    name: \trim((string) $env->get('MCP_SERVER_NAME', 'MCP Server')),
-                    version: \trim((string) $env->get('MCP_SERVER_VERSION', '1.0.0')),
-                ),
-                capabilities: ServerCapabilities::make(),
-                logger: $logs->getLogger('mcp'),
-                loop: $loop,
-                cache: null,
-                container: $container,
-                paginationLimit: 50,
-                instructions: null,
-            ),
+            // Session Management
+            SessionIdGeneratorInterface::class => SessionIdGenerator::class,
+            SessionHandlerInterface::class => $this->createSessionHandler(...),
+            SessionManager::class => $this->createSessionManager(...),
+            SubscriptionManager::class => $this->createSubscriptionManager(...),
 
-            SessionHandlerInterface::class => static fn(
-                EnvironmentInterface $env,
-            ): SessionHandlerInterface => new ArraySessionHandler(
-                ttl: (int) $env->get('MCP_SESSION_TTL', 3600),
-            ),
+            // Cache and Storage
+            CacheInterface::class => $this->createCache(...),
 
-            SessionManager::class => static fn(
-                SessionHandlerInterface $sessionHandler,
-                LogsInterface $logs,
-                LoopInterface $loop,
-            ) => new SessionManager(
-                handler: $sessionHandler,
-                logger: $logs->getLogger('mcp'),
-                loop: $loop,
-            ),
+            // Registry and Tools
+            ReferenceRegistryInterface::class => Registry::class,
+            Registry::class => $this->createRegistry(...),
+            ToolExecutorInterface::class => $this->createToolExecutor(...),
 
-            ServerTransportInterface::class => static fn(EnvironmentInterface $env, FactoryInterface $factory, MiddlewareRepositoryInterface $middleware) => match ($env->get('MCP_TRANSPORT', 'http')) {
-                'http' => new HttpServerTransport(
-                    host: $env->get('MCP_HOST', '127.0.0.1'),
-                    port: (int) $env->get('MCP_PORT', 8090),
-                    middlewares: $middleware->all(),
-                ),
-                'stream' => new StreamableHttpServerTransport(
-                    host: $env->get('MCP_HOST', '127.0.0.1'),
-                    port: (int) $env->get('MCP_PORT', 8090),
-                    middlewares: $middleware->all(),
-                ),
-                default => new StdioServerTransport(),
-            },
+            // Configuration
+            Configuration::class => $this->createMcpConfiguration(...),
 
-            SchemaGenerator::class => static fn(
-                DocBlockParser $parser,
-            ) => new SchemaGenerator(docBlockParser: $parser),
+            // Pagination
+            Paginator::class => $this->createPaginator(...),
 
-            Server::class => static fn(ServerBuilder $builder, Configuration $configuration, SessionManager $sessionManager, Registry $registry, SubscriptionManager $subscriptionManager, SchemaValidator $schemaValidator): Server => new Server(
-                configuration: $configuration,
-                registry: $registry,
-                protocol: new Protocol(
-                    configuration: $configuration,
-                    registry: $registry,
-                    sessionManager: $sessionManager,
-                    dispatcher: new Dispatcher(
-                        configuration: $configuration,
-                        registry: $registry,
-                        subscriptionManager: $subscriptionManager,
-                        schemaValidator: $schemaValidator,
-                    ),
-                ),
-                sessionManager: $sessionManager,
-            ),
+            // Routing and Dispatch
+            RoutesFactory::class => $this->createRoutesFactory(...),
+            Dispatcher::class => $this->createDispatcher(...),
+
+            // Protocol
+            Protocol::class => $this->createProtocol(...),
+
+            // Transport
+            ServerTransportInterface::class => $this->createTransport(...),
+
+            // Main Server
+            Server::class => $this->createServer(...),
         ];
+    }
+
+    private function createSessionHandler(
+        EnvironmentInterface $env,
+        CacheInterface $cache,
+    ): SessionHandlerInterface {
+        $sessionType = $env->get('MCP_SESSION_TYPE', 'array');
+        $ttl = (int) $env->get('MCP_SESSION_TTL', 3600);
+
+        return match ($sessionType) {
+            'cache' => new CacheSessionHandler($cache, $ttl),
+            default => new ArraySessionHandler($ttl),
+        };
+    }
+
+    private function createSessionManager(
+        SessionHandlerInterface $sessionHandler,
+        LogsInterface $logs,
+        LoopInterface $loop,
+        EnvironmentInterface $env,
+    ): SessionManager {
+        return new SessionManager(
+            handler: $sessionHandler,
+            logger: $logs->getLogger('mcp.session'),
+            loop: $loop,
+            ttl: (int) $env->get('MCP_SESSION_TTL', 3600),
+            gcInterval: (float) $env->get('MCP_SESSION_GC_INTERVAL', 300),
+        );
+    }
+
+    private function createSubscriptionManager(LogsInterface $logs): SubscriptionManager
+    {
+        return new SubscriptionManager($logs->getLogger('mcp.subscription'));
+    }
+
+    private function createCache(
+        EnvironmentInterface $env,
+        DirectoriesInterface $dirs,
+    ): CacheInterface {
+        $cacheType = $env->get('MCP_CACHE_TYPE', 'array');
+
+        return match ($cacheType) {
+            'file' => new FileCache($dirs->get('runtime') . 'cache/mcp'),
+            default => new ArrayCache(),
+        };
+    }
+
+    private function createRegistry(LogsInterface $logs): Registry
+    {
+        return new Registry($logs->getLogger('mcp.registry'));
+    }
+
+    private function createToolExecutor(
+        ReferenceRegistryInterface $registry,
+        LogsInterface $logs,
+    ): ToolExecutorInterface {
+        return new ToolExecutor($registry, $logs->getLogger('mcp.executor'));
+    }
+
+    private function createMcpConfiguration(
+        EnvironmentInterface $env,
+    ): Configuration {
+        return new Configuration(
+            serverInfo: Implementation::make(
+                name: trim((string) $env->get('MCP_SERVER_NAME', 'Spiral MCP Server')),
+                version: trim((string) $env->get('MCP_SERVER_VERSION', '1.0.0')),
+            ),
+            capabilities: ServerCapabilities::make(
+                tools: $env->get('MCP_ENABLE_TOOLS', true),
+                toolsListChanged: $env->get('MCP_ENABLE_TOOLS_LIST_CHANGED', true),
+                resources: $env->get('MCP_ENABLE_RESOURCES', true),
+                resourcesSubscribe: $env->get('MCP_ENABLE_RESOURCES_SUBSCRIBE', true),
+                resourcesListChanged: $env->get('MCP_ENABLE_RESOURCES_LIST_CHANGED', true),
+                prompts: $env->get('MCP_ENABLE_PROMPTS', true),
+                promptsListChanged: $env->get('MCP_ENABLE_PROMPTS_LIST_CHANGED', true),
+                logging: $env->get('MCP_ENABLE_LOGGING', true),
+                completions: $env->get('MCP_ENABLE_COMPLETIONS', true),
+                experimental: (array) $env->get('MCP_EXPERIMENTAL_CAPABILITIES', []),
+            ),
+            instructions: $env->get('MCP_INSTRUCTIONS'),
+        );
+    }
+
+    private function createPaginator(EnvironmentInterface $env): Paginator
+    {
+        return new Paginator(
+            paginationLimit: (int) $env->get('MCP_PAGINATION_LIMIT', 50),
+        );
+    }
+
+    private function createRoutesFactory(
+        Configuration $configuration,
+        ReferenceRegistryInterface $registry,
+        SubscriptionManager $subscriptionManager,
+        ToolExecutorInterface $toolExecutor,
+        Paginator $pagination,
+        LogsInterface $logs,
+    ): RoutesFactory {
+        return new RoutesFactory(
+            configuration: $configuration,
+            registry: $registry,
+            subscriptionManager: $subscriptionManager,
+            toolExecutor: $toolExecutor,
+            pagination: $pagination,
+            logger: $logs->getLogger('mcp.routes'),
+        );
+    }
+
+    private function createDispatcher(
+        LogsInterface $logs,
+        RoutesFactory $routesFactory,
+    ): Dispatcher {
+        return new Dispatcher(
+            logger: $logs->getLogger('mcp.dispatcher'),
+            routesFactory: $routesFactory,
+        );
+    }
+
+    private function createProtocol(
+        FactoryInterface $factory,
+        LogsInterface $logs,
+    ): Protocol {
+        return $factory->make(Protocol::class, [
+            'logger' => $logs->getLogger('mcp.protocol'),
+        ]);
+    }
+
+    private function createTransport(
+        EnvironmentInterface $env,
+        LoopInterface $loop,
+        SessionIdGeneratorInterface $sessionIdGenerator,
+        EventStoreInterface $eventStore,
+        MiddlewareRepositoryInterface $middleware,
+        LogsInterface $logs,
+    ): ServerTransportInterface {
+        $transportType = $env->get('MCP_TRANSPORT', 'http');
+        $host = $env->get('MCP_HOST', '127.0.0.1');
+        $port = (int) $env->get('MCP_PORT', 8090);
+        $mcpPath = $env->get('MCP_PATH', '/mcp');
+
+        return match ($transportType) {
+            'http' => $this->createHttpTransport(
+                $env,
+                $loop,
+                $sessionIdGenerator,
+                $middleware,
+                $logs,
+                $host,
+                $port,
+                $mcpPath,
+            ),
+            'streamable' => $this->createStreamableHttpTransport(
+                $env,
+                $loop,
+                $sessionIdGenerator,
+                $eventStore,
+                $logs,
+                $host,
+                $port,
+                $mcpPath,
+            ),
+            'stdio' => $this->createStdioTransport($loop, $logs),
+            default => throw new \InvalidArgumentException("Unknown transport type: {$transportType}")
+        };
+    }
+
+    private function createHttpTransport(
+        EnvironmentInterface $env,
+        LoopInterface $loop,
+        SessionIdGeneratorInterface $sessionIdGenerator,
+        MiddlewareRepositoryInterface $middleware,
+        LogsInterface $logs,
+        string $host,
+        int $port,
+        string $mcpPath,
+    ): HttpServerTransport {
+        $httpServer = new HttpServer(
+            loop: $loop,
+            host: $host,
+            port: $port,
+            mcpPath: $mcpPath,
+            sslContext: $env->get('MCP_SSL_CONTEXT'),
+            middleware: $middleware->all(),
+            logger: $logs->getLogger('mcp.http'),
+            runLoop: false, // Let Spiral manage the loop
+        );
+
+        return new HttpServerTransport(
+            httpServer: $httpServer,
+            sessionId: $sessionIdGenerator,
+            logger: $logs->getLogger('mcp.transport.http'),
+        );
+    }
+
+    private function createStreamableHttpTransport(
+        EnvironmentInterface $env,
+        LoopInterface $loop,
+        SessionIdGeneratorInterface $sessionIdGenerator,
+        EventStoreInterface $eventStore,
+        LogsInterface $logs,
+        string $host,
+        int $port,
+        string $mcpPath,
+    ): StreamableHttpServerTransport {
+        $httpServer = new HttpServer(
+            loop: $loop,
+            host: $host,
+            port: $port,
+            mcpPath: $mcpPath,
+            logger: $logs->getLogger('mcp.http'),
+            runLoop: false,
+        );
+
+        return new StreamableHttpServerTransport(
+            httpServer: $httpServer,
+            sessionId: $sessionIdGenerator,
+            logger: $logs->getLogger('mcp.transport.streamable'),
+            enableJsonResponse: (bool) $env->get('MCP_ENABLE_JSON_RESPONSE', true),
+            stateless: (bool) $env->get('MCP_STATELESS', false),
+            eventStore: $eventStore,
+        );
+    }
+
+    private function createStdioTransport(LoopInterface $loop, LogsInterface $logs): StdioServerTransport
+    {
+        $transport = new StdioServerTransport();
+        $transport->setLoop($loop);
+        $transport->setLogger($logs->getLogger('mcp.transport.stdio'));
+
+        return $transport;
+    }
+
+    private function createServer(
+        Protocol $protocol,
+        SessionManager $sessionManager,
+        LogsInterface $logs,
+    ): Server {
+        return new Server(
+            protocol: $protocol,
+            sessionManager: $sessionManager,
+            logger: $logs->getLogger('mcp.server'),
+        );
     }
 
     public function init(
