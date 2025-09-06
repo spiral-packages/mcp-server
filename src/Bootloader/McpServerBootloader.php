@@ -34,6 +34,7 @@ use Mcp\Server\Transports\StdioServerTransport;
 use Mcp\Server\Transports\StreamableHttpServerTransport;
 use PhpMcp\Schema\Implementation;
 use PhpMcp\Schema\ServerCapabilities;
+use Psr\Container\ContainerInterface;
 use Psr\SimpleCache\CacheInterface;
 use React\EventLoop\Loop;
 use React\EventLoop\LoopInterface;
@@ -259,22 +260,22 @@ final class McpServerBootloader extends Bootloader
     }
 
     private function createTransport(
-        HttpServerInterface $httpServer,
+        ContainerInterface $container,
         EnvironmentInterface $env,
         LoopInterface $loop,
         SessionIdGeneratorInterface $sessionIdGenerator,
         LogsInterface $logs,
     ): ServerTransportInterface {
-        $transportType = $env->get('MCP_TRANSPORT', 'http');
+        $transportType = $env->get('MCP_TRANSPORT', 'stdio');
 
         return match ($transportType) {
             'http' => $this->createHttpTransport(
-                httpServer: $httpServer,
+                httpServer: $container->get(HttpServerInterface::class),
                 sessionIdGenerator: $sessionIdGenerator,
                 logs: $logs,
             ),
             'streamable' => $this->createStreamableHttpTransport(
-                httpServer: $httpServer,
+                httpServer: $container->get(HttpServerInterface::class),
                 env: $env,
                 sessionIdGenerator: $sessionIdGenerator,
                 logs: $logs,
